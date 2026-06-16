@@ -311,7 +311,7 @@ rpm_dep_name() {
   ' <<< "$1" | awk '{print $1}'
 }
 
-rpm_graph_query_spec() {
+rpm_graph_query_spec_raw() {
   local spec_path="$1" mode="$2"
   case "$mode" in
     names)         rpmspec -q --qf '%{NAME}\n' "$spec_path" ;;
@@ -319,9 +319,47 @@ rpm_graph_query_spec() {
     requires)      rpmspec -q --requires "$spec_path" ;;
     buildrequires) rpmspec -q --buildrequires "$spec_path" ;;
     *) echo "::error::unknown RPM graph query mode: $mode"; exit 1 ;;
-  esac | while read -r line; do rpm_dep_name "$line"; done | awk 'NF' | sort -u
+  esac
 }
 
+rpm_graph_query_spec() {
+  local spec_path="$1" mode="$2"
+  rpm_graph_query_spec_raw "$spec_path" "$mode" \
+    | while read -r line; do rpm_dep_name "$line"; done \
+    | awk 'NF' \
+    | sort -u
+}
+
+rpm_graph_log_spec_package_metadata() {
+  local graph_root="$1" node_id="$2" spec_path="$3" mode raw_file norm_file
+  local meta_dir="$graph_root/spec-metadata/$node_id"
+  mkdir -p "$meta_dir"
+
+  printf '%s\t%s\n' "$node_id" "$spec_path" >> "$graph_root/specpaths.tsv"
+
+  for mode in names provides requires buildrequires; do
+    raw_file="$meta_dir/${mode}.raw.txt"
+    norm_file="$meta_dir/${mode}.txt"
+    rpm_graph_query_spec_raw "$spec_path" "$mode" | sort -u > "$raw_file"
+    rpm_graph_query_spec "$spec_path" "$mode" > "$norm_file"
+  done
+
+  while read -r name; do
+    [[ -n "$name" ]] && printf '%s\t%s\n' "$node_id" "$name" >> "$graph_root/package-names.tsv"
+  done < "$meta_dir/names.txt"
+
+  while read -r provide; do
+    [[ -n "$provide" ]] && printf '%s\t%s\n' "$node_id" "$provide" >> "$graph_root/package-provides.tsv"
+  done < "$meta_dir/provides.txt"
+
+  echo "::group::RPM spec metadata: $node_id"
+  echo "Spec: $spec_path"
+  echo "Package names:"
+  sed 's/^/  /' "$meta_dir/names.txt"
+  echo "Selected devel/package aliases:"
+  grep -E '(^|[-_])(devel|dev)$|cmake\(|pkgconfig\(|^kf6-' "$meta_dir/provides.txt" | sed 's/^/  /' || true
+  echo "::endgroup::"
+}
 rpm_graph_prepare_source() {
   local queue_file="$1" graph_root="$2" family="$3" target="$4" node_id="$5"
   # shellcheck source=/dev/null
@@ -378,6 +416,9 @@ rpm_order_queue_files_for_target() {
   : > "$graph_root/builddeps.tsv"
   : > "$graph_root/runtimedeps.tsv"
   : > "$graph_root/node-queue.tsv"
+  : > "$graph_root/specpaths.tsv"
+  : > "$graph_root/package-names.tsv"
+  : > "$graph_root/package-provides.tsv"
 
   mapfile -t queue_items < <(queue_list_files /work/package-build-queue)
   [[ ${#queue_items[@]} -gt 0 ]] || { echo "::error::No RPM package declarations were queued"; exit 1; }
@@ -388,11 +429,18 @@ rpm_order_queue_files_for_target() {
     printf '%s\t%s\n' "$node_id" "$queue_file" >> "$graph_root/node-queue.tsv"
     spec_path="$(rpm_graph_prepare_source "$queue_file" "$graph_root" "$family" "$target" "$node_id" | tee /dev/stderr | tail -n1)"
     printf '%s\n' "$spec_path" > "$graph_root/$node_id.specpath"
+    rpm_graph_log_spec_package_metadata "$graph_root" "$node_id" "$spec_path"
     while read -r dep; do rpm_graph_add_provider "$graph_root/providers.tsv" "$dep" "$node_id"; done < <(rpm_graph_query_spec "$spec_path" names)
     while read -r dep; do rpm_graph_add_provider "$graph_root/providers.tsv" "$dep" "$node_id"; done < <(rpm_graph_query_spec "$spec_path" provides)
   done
 
   sort -u "$graph_root/providers.tsv" -o "$graph_root/providers.tsv"
+  sort -u "$graph_root/package-names.tsv" -o "$graph_root/package-names.tsv"
+  sort -u "$graph_root/package-provides.tsv" -o "$graph_root/package-provides.tsv"
+
+  echo "::group::RPM internal package names for $target"
+  column -t -s $'\t' "$graph_root/package-names.tsv" || cat "$graph_root/package-names.tsv"
+  echo "::endgroup::"
 
   for node_id in $(cut -f1 "$graph_root/nodes.tsv"); do
     spec_path="$(cat "$graph_root/$node_id.specpath")"
