@@ -1,0 +1,8 @@
+%no-protection
+Key-Type: RSA
+Key-Length: 4096
+Key-Usage: sign
+Name-Real: Repository Signing
+Name-Email: repo@example.invalid
+Expire-Date: 0
+%commit
