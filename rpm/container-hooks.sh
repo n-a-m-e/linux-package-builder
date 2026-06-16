@@ -352,13 +352,15 @@ rpm_graph_log_spec_package_metadata() {
     [[ -n "$provide" ]] && printf '%s\t%s\n' "$node_id" "$provide" >> "$graph_root/package-provides.tsv"
   done < "$meta_dir/provides.txt"
 
-  echo "::group::RPM spec metadata: $node_id"
-  echo "Spec: $spec_path"
-  echo "Package names:"
-  sed 's/^/  /' "$meta_dir/names.txt"
-  echo "Selected devel/package aliases:"
-  grep -E '(^|[-_])(devel|dev)$|cmake\(|pkgconfig\(|^kf6-' "$meta_dir/provides.txt" | sed 's/^/  /' || true
-  echo "::endgroup::"
+  {
+    echo "::group::RPM spec metadata: $node_id"
+    echo "Spec: $spec_path"
+    echo "Package names:"
+    sed 's/^/  /' "$meta_dir/names.txt"
+    echo "Selected devel/package aliases:"
+    grep -E '(^|[-_])(devel|dev)$|cmake\(|pkgconfig\(|^kf6-' "$meta_dir/provides.txt" | sed 's/^/  /' || true
+    echo "::endgroup::"
+  } >&2
 }
 rpm_graph_prepare_source() {
   local queue_file="$1" graph_root="$2" family="$3" target="$4" node_id="$5"
@@ -438,9 +440,11 @@ rpm_order_queue_files_for_target() {
   sort -u "$graph_root/package-names.tsv" -o "$graph_root/package-names.tsv"
   sort -u "$graph_root/package-provides.tsv" -o "$graph_root/package-provides.tsv"
 
-  echo "::group::RPM internal package names for $target"
-  column -t -s $'\t' "$graph_root/package-names.tsv" || cat "$graph_root/package-names.tsv"
-  echo "::endgroup::"
+  {
+    echo "::group::RPM internal package names for $target"
+    column -t -s $'\t' "$graph_root/package-names.tsv" || cat "$graph_root/package-names.tsv"
+    echo "::endgroup::"
+  } >&2
 
   for node_id in $(cut -f1 "$graph_root/nodes.tsv"); do
     spec_path="$(cat "$graph_root/$node_id.specpath")"
