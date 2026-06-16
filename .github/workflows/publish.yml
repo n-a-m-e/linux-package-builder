@@ -139,7 +139,9 @@ jobs:
         with:
           path: package-cache
           key: package-cache-${{ inputs.package-type }}-${{ runner.os }}-${{ needs.prepare.outputs.version-key }}-${{ github.run_id }}
-          restore-keys: package-cache-${{ inputs.package-type }}-${{ runner.os }}-
+          restore-keys: |
+            package-cache-${{ inputs.package-type }}-${{ runner.os }}-${{ needs.prepare.outputs.version-key }}-
+            package-cache-${{ inputs.package-type }}-${{ runner.os }}-
 
       # ---------------------------------------------------------------------
       # RPM / DEB packages
@@ -165,7 +167,7 @@ jobs:
         run: bash publisher/common/print-repository-summary.sh
 
       - name: Package | Save package cache
-        if: inputs.package-type == 'rpm' || inputs.package-type == 'deb'
+        if: always() && (inputs.package-type == 'rpm' || inputs.package-type == 'deb')
         continue-on-error: true
         uses: actions/cache/save@v4
         with:
