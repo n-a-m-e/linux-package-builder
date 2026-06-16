@@ -215,7 +215,7 @@ build_queue_item() {
   mkdir -p "$cache_dir" "$result_dir" "$repo_dir" "$src_repo_dir" "$local_repo"
   createrepo_c "$local_repo" || true
 
-  local patch_root compat_root spec_hash patch_hash macro_hash replacement_hash tmpclone fingerprint srpm url
+  local patch_root compat_root spec_hash patch_hash macro_hash replacement_hash ref_fingerprint tmpclone fingerprint srpm url
   patch_root="/work/work/${primary_app}/patches"
   compat_root="$(package_compat_root)"
   spec_hash=""
@@ -232,7 +232,13 @@ build_queue_item() {
   patch_hash="$(patch_file_hashes "$patch_root" "$SPEC" "$target_family_name" "$target_name" | sha256sum | cut -d' ' -f1)"
   macro_hash="$(rpm_macro_file_hashes "$compat_root" "$target_family_name" "$target_name" | sha256sum | cut -d' ' -f1)"
   replacement_hash="$(rpm_replacement_file_hashes "$compat_root" "$target_family_name" "$target_name" | sha256sum | cut -d' ' -f1)"
-  fingerprint="$(printf '%s\n' "$CLONE_URL" "$REF" "$SUBDIR" "$SPEC" "$mock_config" "$target_arch_name" "$spec_hash" "$patch_hash" "$macro_hash" "$replacement_hash" | sha256sum | cut -d' ' -f1)"
+  ref_fingerprint="$REF"
+  case "$CLONE_URL" in
+    "file:///work/work/${primary_app}/sonicde-specs")
+      ref_fingerprint="local-sonicde-specs-content"
+      ;;
+  esac
+  fingerprint="$(printf '%s\n' "$CLONE_URL" "$ref_fingerprint" "$SUBDIR" "$SPEC" "$mock_config" "$target_arch_name" "$spec_hash" "$patch_hash" "$macro_hash" "$replacement_hash" | sha256sum | cut -d' ' -f1)"
 
   if [[ -f "$cache_dir/.fingerprint" && "$(cat "$cache_dir/.fingerprint")" == "$fingerprint" ]] && compgen -G "$cache_dir/*.rpm" >/dev/null; then
     echo "Using cached RPMs for $target_name/$build_id"
